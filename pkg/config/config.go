@@ -41,17 +41,17 @@ type Config struct {
 // Load reads configuration from environment variables with sensible defaults.
 func Load() (*Config, error) {
 	cfg := &Config{
-		ServerPort:              getEnv("SERVER_PORT", "8080"),
-		DBHost:                  getEnv("DB_HOST", "localhost"),
-		DBPort:                  getEnv("DB_PORT", "5432"),
-		DBUser:                  getEnv("DB_USER", "postgres"),
-		DBPassword:              getEnv("DB_PASSWORD", "postgres"),
-		DBName:                  getEnv("DB_NAME", "flow_engine"),
-		DBSSLMode:               getEnv("DB_SSL_MODE", "disable"),
-		RedisURL:                getEnv("REDIS_URL", "localhost:6379"),
-		JWTSecret:               getEnv("JWT_SECRET", ""),
-		Timezone:                getEnv("TIMEZONE", "Asia/Jakarta"),
-		FailurePolicy:           getEnv("FAILURE_POLICY", "stop"),
+		ServerPort:    getEnv("SERVER_PORT", "8080"),
+		DBHost:        getEnv("DB_HOST", "localhost"),
+		DBPort:        getEnv("DB_PORT", "5432"),
+		DBUser:        getEnv("DB_USER", "postgres"),
+		DBPassword:    getEnv("DB_PASSWORD", "postgres"),
+		DBName:        getEnv("DB_NAME", "flow_engine"),
+		DBSSLMode:     getEnv("DB_SSL_MODE", "disable"),
+		RedisURL:      getEnv("REDIS_URL", "localhost:6379"),
+		JWTSecret:     getEnv("JWT_SECRET", ""),
+		Timezone:      getEnv("TIMEZONE", "Asia/Jakarta"),
+		FailurePolicy: getEnv("FAILURE_POLICY", "stop"),
 	}
 
 	var err error

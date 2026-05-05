@@ -1,0 +1,317 @@
+{
+  "info": {
+    "name": "API Scheduler Flow Engine",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE4MDk1MDE5ODYsInJvbGUiOiJBRE1JTiIsInN1YiI6IjEyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjYxNDE3NDAwMCJ9.q50tTz2ydAk6cPY8XT_Ct74h2Nq4SHqXNL33yvHDWUU",
+      "type": "string"
+    },
+    {
+      "key": "flow_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "execution_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "schedule_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Flows",
+      "item": [
+        {
+          "name": "Create Flow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "    pm.collectionVariables.set(\"flow_id\", jsonData.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Flow\",\n  \"description\": \"A simple flow for testing\",\n  \"steps\": [\n    {\n      \"order\": 1,\n      \"action\": \"run_script\",\n      \"config\": {\n        \"command\": \"echo 'Hello World'\"\n      },\n      \"retry_count\": 3,\n      \"retry_delay_seconds\": 5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/flows",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "flows"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Flows",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/flows?page=1&page_size=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "flows"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Flow By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/flows/{{flow_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "flows",
+                "{{flow_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Flow",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Test Flow\",\n  \"description\": \"An updated description\",\n  \"steps\": [\n    {\n      \"order\": 1,\n      \"action\": \"run_script\",\n      \"config\": {\n        \"command\": \"echo 'Updated Hello'\"\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/flows/{{flow_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "flows",
+                "{{flow_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Flow",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/flows/{{flow_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "flows",
+                "{{flow_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Trigger Execution",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "    pm.collectionVariables.set(\"execution_id\", jsonData.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/flows/{{flow_id}}/execute",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "flows",
+                "{{flow_id}}",
+                "execute"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Schedule",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "    pm.collectionVariables.set(\"schedule_id\", jsonData.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cron_expression\": \"*/5 * * * *\",\n  \"enabled\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/flows/{{flow_id}}/schedule",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "flows",
+                "{{flow_id}}",
+                "schedule"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Executions",
+      "item": [
+        {
+          "name": "Get All Executions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/executions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "executions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Execution By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/executions/{{execution_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "executions",
+                "{{execution_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Schedules",
+      "item": [
+        {
+          "name": "Update Schedule",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/schedules/{{schedule_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "schedules",
+                "{{schedule_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
