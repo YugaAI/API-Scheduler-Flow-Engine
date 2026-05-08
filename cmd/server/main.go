@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +16,7 @@ import (
 	"github.com/openspec/api-scheduler-flow-engine/internal/infrastructure/action"
 	"github.com/openspec/api-scheduler-flow-engine/internal/infrastructure/persistence"
 	"github.com/openspec/api-scheduler-flow-engine/internal/infrastructure/persistence/postgres"
+	"github.com/openspec/api-scheduler-flow-engine/internal/infrastructure/queue"
 	"github.com/openspec/api-scheduler-flow-engine/internal/presentation/handler"
 	"github.com/openspec/api-scheduler-flow-engine/internal/presentation/router"
 	"github.com/openspec/api-scheduler-flow-engine/pkg/config"
@@ -22,22 +24,28 @@ import (
 )
 
 func main() {
-	// Attempt to load .env file
 	if err := godotenv.Load(); err != nil {
-		// Ignore error if file doesn't exist, as env vars might be set externally
 		fmt.Println("No .env file found or error loading it, using environment variables")
 	}
 
-	// Initialize logger
 	logger.Init(os.Getenv("LOG_LEVEL"))
+	defer logger.Close() // flush & close log file on exit
+
 	logger.Info("Starting API Scheduler Flow Engine")
 
-	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("Failed to load configuration", "error", err)
 		os.Exit(1)
 	}
+
+	// Initialize Redis Queue (juga implements RetryTracker)
+	redisQueue, err := queue.NewRedisQueue(cfg.RedisURL)
+	if err != nil {
+		logger.Error("Failed to initialize Redis queue", "error", err)
+		os.Exit(1)
+	}
+	defer redisQueue.Close()
 
 	// Initialize Database
 	db, err := postgres.NewConnection(cfg)
@@ -66,12 +74,22 @@ func main() {
 	actionRegistry.Register(&action.DockerBuildAction{})
 	actionRegistry.Register(&action.DockerPushAction{})
 
-	// Initialize Executor Service
-	executorService := service.NewExecutorService(executionRepo, flowRepo, actionRegistry, cfg)
+	// Initialize Executor Service — redisQueue sebagai RetryTracker
+	executorService := service.NewExecutorService(executionRepo, flowRepo, actionRegistry, redisQueue, cfg)
 
 	// Initialize Worker Pool
-	workerPool := service.NewWorkerPool(cfg.WorkerPoolSize, executorService)
+	workerPool := service.NewWorkerPool(cfg.WorkerPoolSize, executorService, redisQueue)
 	workerPool.Start()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-sigCh
+		log.Println("Shutting down gracefully...")
+		workerPool.Stop()
+		os.Exit(0)
+	}()
 
 	// Initialize Scheduler Service
 	schedulerService, err := service.NewSchedulerService(scheduleRepo, executionRepo, workerPool, cfg.Timezone)
@@ -108,14 +126,12 @@ func main() {
 		}
 	}()
 
-	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	logger.Info("Shutting down server...")
 
-	// Stop Scheduler, wait for WorkerPool to finish, shutdown HTTP server gracefully
 	schedulerService.Stop()
 	workerPool.Stop()
 

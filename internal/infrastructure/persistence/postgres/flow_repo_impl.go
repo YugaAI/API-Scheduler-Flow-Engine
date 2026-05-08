@@ -72,6 +72,14 @@ func (r *flowRepositoryImpl) Update(ctx context.Context, flow *entity.Flow) erro
 		}
 
 		if len(flow.Steps) > 0 {
+			for i := range flow.Steps {
+				if flow.Steps[i].RetryCount < 0 {
+					flow.Steps[i].RetryCount = 0
+				}
+				if flow.Steps[i].RetryDelaySeconds < 0 {
+					flow.Steps[i].RetryDelaySeconds = 0
+				}
+			}
 			if err := tx.Create(&flow.Steps).Error; err != nil {
 				return err
 			}
