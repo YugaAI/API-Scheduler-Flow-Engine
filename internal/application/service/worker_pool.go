@@ -18,18 +18,9 @@ type WorkerPool struct {
 	executor   *ExecutorService
 	wg         sync.WaitGroup
 	quit       chan struct{}
+	once       sync.Once // ← Fix #1: guard close(quit)
 	useRedis   bool
 }
-
-//func NewWorkerPool(maxWorkers int, executor *ExecutorService) *WorkerPool {
-//	return &WorkerPool{
-//		maxWorkers: maxWorkers,
-//		jobQueue:   make(chan uuid.UUID, 1000), // Buffer size can be configured
-//		executor:   executor,
-//		quit:       make(chan struct{}),
-//		useRedis:   false,
-//	}
-//}
 
 func NewWorkerPool(maxWorkers int, executor *ExecutorService, redisQueue queue.Queue) *WorkerPool {
 	return &WorkerPool{
@@ -49,16 +40,18 @@ func (p *WorkerPool) Start() {
 	}
 }
 
+// Stop idempotent — aman dipanggil berkali-kali
 func (p *WorkerPool) Stop() {
-	logger.Info("Stopping worker pool...")
-	close(p.quit)
+	p.once.Do(func() {
+		logger.Info("Stopping worker pool...")
+		close(p.quit)
+	})
 	p.wg.Wait()
 	logger.Info("Worker pool stopped")
 }
 
 func (p *WorkerPool) Dispatch(ctx context.Context, executionID uuid.UUID) error {
 	if p.useRedis {
-		// Dispatch ke Redis queue
 		if err := p.queue.Enqueue(ctx, executionID); err != nil {
 			logger.Error("Failed to enqueue to Redis", "error", err, "execution_id", executionID)
 			return err
@@ -67,7 +60,6 @@ func (p *WorkerPool) Dispatch(ctx context.Context, executionID uuid.UUID) error 
 		return nil
 	}
 
-	// Fallback ke in-memory channel
 	select {
 	case p.jobQueue <- executionID:
 		logger.Debug("Execution dispatched to worker pool", "execution_id", executionID)
@@ -85,43 +77,47 @@ func (p *WorkerPool) worker(id int) {
 	logger.Debug("Worker started", "worker_id", id)
 
 	for {
+		// Fix #2: cek quit signal SEBELUM blocking dequeue
 		select {
-		//case executionID := <-p.jobQueue:
-		//	logger.Debug("Worker picked up execution", "worker_id", id, "execution_id", executionID)
-		//	p.executor.Execute(context.Background(), executionID)
 		case <-p.quit:
 			logger.Debug("Worker stopping", "worker_id", id)
 			return
 		default:
-			var executionID uuid.UUID
-			var err error
+		}
 
-			if p.useRedis {
-				// Consume dari Redis queue dengan timeout
-				executionID, err = p.queue.DequeueWithTimeout(context.Background(), 2*time.Second)
-				if err != nil {
-					// Log error jika bukan timeout
-					logger.Debug("Dequeue error or timeout", "worker_id", id, "error", err)
-					continue
-				}
-				if executionID == uuid.Nil {
-					// Timeout, tidak ada item, lanjut loop
-					continue
-				}
-			} else {
-				// Consume dari in-memory channel
+		if p.useRedis {
+			// Fix #3: DequeueWithTimeout sudah blocking — tidak perlu default busy-wait
+			executionID, err := p.queue.DequeueWithTimeout(context.Background(), 2*time.Second)
+			if err != nil {
+				// Cek quit lagi setelah timeout, hindari log spam saat shutdown
 				select {
-				case executionID = <-p.jobQueue:
-					// Got a job
 				case <-p.quit:
 					logger.Debug("Worker stopping", "worker_id", id)
 					return
+				default:
+					logger.Debug("Dequeue timeout or error", "worker_id", id, "error", err)
+					continue
 				}
+			}
+			if executionID == uuid.Nil {
+				continue
 			}
 
 			logger.Info("Worker processing execution", "worker_id", id, "execution_id", executionID)
 			p.executor.Execute(context.Background(), executionID)
 			logger.Info("Worker finished execution", "worker_id", id, "execution_id", executionID)
+
+		} else {
+			// In-memory: blocking select dengan quit signal
+			select {
+			case executionID := <-p.jobQueue:
+				logger.Info("Worker processing execution", "worker_id", id, "execution_id", executionID)
+				p.executor.Execute(context.Background(), executionID)
+				logger.Info("Worker finished execution", "worker_id", id, "execution_id", executionID)
+			case <-p.quit:
+				logger.Debug("Worker stopping", "worker_id", id)
+				return
+			}
 		}
 	}
 }

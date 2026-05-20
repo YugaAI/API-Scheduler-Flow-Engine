@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,7 +28,7 @@ func main() {
 	}
 
 	logger.Init(os.Getenv("LOG_LEVEL"))
-	defer logger.Close() // flush & close log file on exit
+	defer logger.Close()
 
 	logger.Info("Starting API Scheduler Flow Engine")
 
@@ -39,7 +38,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Redis Queue (juga implements RetryTracker)
 	redisQueue, err := queue.NewRedisQueue(cfg.RedisURL)
 	if err != nil {
 		logger.Error("Failed to initialize Redis queue", "error", err)
@@ -47,7 +45,6 @@ func main() {
 	}
 	defer redisQueue.Close()
 
-	// Initialize Database
 	db, err := postgres.NewConnection(cfg)
 	if err != nil {
 		logger.Error("Failed to connect to database", "error", err)
@@ -59,12 +56,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Repositories
 	flowRepo := postgres.NewFlowRepository(db)
 	executionRepo := postgres.NewExecutionRepository(db)
 	scheduleRepo := postgres.NewScheduleRepository(db)
 
-	// Initialize Action Registry
 	actionRegistry := service.NewActionRegistry()
 	actionRegistry.Register(&action.RunScriptAction{})
 	actionRegistry.Register(&action.GitPullAction{})
@@ -74,24 +69,11 @@ func main() {
 	actionRegistry.Register(&action.DockerBuildAction{})
 	actionRegistry.Register(&action.DockerPushAction{})
 
-	// Initialize Executor Service — redisQueue sebagai RetryTracker
 	executorService := service.NewExecutorService(executionRepo, flowRepo, actionRegistry, redisQueue, cfg)
 
-	// Initialize Worker Pool
 	workerPool := service.NewWorkerPool(cfg.WorkerPoolSize, executorService, redisQueue)
 	workerPool.Start()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-sigCh
-		log.Println("Shutting down gracefully...")
-		workerPool.Stop()
-		os.Exit(0)
-	}()
-
-	// Initialize Scheduler Service
 	schedulerService, err := service.NewSchedulerService(scheduleRepo, executionRepo, workerPool, cfg.Timezone)
 	if err != nil {
 		logger.Error("Failed to initialize scheduler", "error", err)
@@ -102,44 +84,61 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Use Cases
 	flowUseCase := usecase.NewFlowUseCase(flowRepo, actionRegistry)
 	executionUseCase := usecase.NewExecutionUseCase(executionRepo, flowRepo, workerPool)
 	scheduleUseCase := usecase.NewScheduleUseCase(scheduleRepo, flowRepo, schedulerService)
 
-	// Initialize HTTP Handlers & Router
 	flowHandler := handler.NewFlowHandler(flowUseCase)
 	executionHandler := handler.NewExecutionHandler(executionUseCase)
 	scheduleHandler := handler.NewScheduleHandler(scheduleUseCase)
 
 	r := router.SetupRouter(cfg.JWTSecret, flowHandler, executionHandler, scheduleHandler)
 
-	logger.Info("Starting HTTP server", "port", cfg.ServerPort)
 	srv := &http.Server{
-		Addr:    ":" + cfg.ServerPort,
-		Handler: r,
+		Addr:         ":" + cfg.ServerPort,
+		Handler:      r,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
+	// Start HTTP server di goroutine
 	go func() {
+		logger.Info("Starting HTTP server", "port", cfg.ServerPort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
+	// ✅ SINGLE shutdown path — tidak ada goroutine signal handler lain
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	logger.Info("Shutting down server...")
 
-	schedulerService.Stop()
-	workerPool.Stop()
+	// Urutan shutdown penting:
+	// 1. Stop terima request baru
+	// 2. Stop scheduler (tidak dispatch job baru)
+	// 3. Stop worker pool (selesaikan job yang sedang berjalan)
+	// 4. Shutdown HTTP server (tunggu request aktif selesai)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+
+	// Step 1: Stop scheduler — tidak ada job baru masuk
+	schedulerService.Stop()
+	logger.Info("Scheduler stopped")
+
+	// Step 2: Stop worker pool — tunggu job aktif selesai
+	workerPool.Stop()
+	logger.Info("Worker pool stopped")
+
+	// Step 3: Graceful HTTP shutdown — tunggu request aktif
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("Server forced to shutdown", "error", err)
 	}
 
-	logger.Info("Server exiting")
+	logger.Info("Server exited cleanly")
 }
