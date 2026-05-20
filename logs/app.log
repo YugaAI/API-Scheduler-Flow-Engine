@@ -1,0 +1,65 @@
+{"time":"2026-05-07T15:15:19.4329585+07:00","level":"INFO","msg":"Starting API Scheduler Flow Engine"}
+{"time":"2026-05-07T15:15:19.8359536+07:00","level":"INFO","msg":"Database connection established"}
+{"time":"2026-05-07T15:15:19.8359536+07:00","level":"INFO","msg":"Running database migrations"}
+{"time":"2026-05-07T15:15:20.3791377+07:00","level":"INFO","msg":"Database migrations completed successfully"}
+{"time":"2026-05-07T15:15:20.3791377+07:00","level":"INFO","msg":"Starting worker pool","workers":10,"useRedis":true}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":1}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":0}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":2}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":5}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":4}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":6}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":3}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":9}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":7}
+{"time":"2026-05-07T15:15:20.3796427+07:00","level":"DEBUG","msg":"Worker started","worker_id":8}
+{"time":"2026-05-07T15:15:20.3822686+07:00","level":"INFO","msg":"Starting scheduler service"}
+{"time":"2026-05-07T15:15:20.3882838+07:00","level":"INFO","msg":"Scheduler service started","loaded_jobs":0}
+{"time":"2026-05-07T15:15:20.3926922+07:00","level":"INFO","msg":"Starting HTTP server","port":"5678"}
+{"time":"2026-05-07T15:16:49.1429057+07:00","level":"INFO","msg":"Worker processing execution","worker_id":0,"execution_id":"bdf57435-a2aa-4814-b4fe-f8716e54a53d"}
+{"time":"2026-05-07T15:16:49.1453937+07:00","level":"DEBUG","msg":"Execution dispatched to Redis queue","execution_id":"bdf57435-a2aa-4814-b4fe-f8716e54a53d"}
+{"time":"2026-05-07T15:16:49.1526339+07:00","level":"INFO","msg":"Starting execution","execution_id":"bdf57435-a2aa-4814-b4fe-f8716e54a53d","flow_id":"990af1be-328a-4cef-b7bd-34f0cd6d81ee","trigger_type":"manual"}
+{"time":"2026-05-07T15:16:49.1766615+07:00","level":"WARN","msg":"Step execution failed, retrying","execution_id":"bdf57435-a2aa-4814-b4fe-f8716e54a53d","step_order":1,"action":"run_script","attempt":1,"max_retries":3,"next_retry_at":"2026-05-07T15:16:54+07:00","error":"command execution failed: exec: \"sh\": executable file not found in %PATH%"}
+{"time":"2026-05-07T15:16:54.1910024+07:00","level":"WARN","msg":"Step execution failed, retrying","execution_id":"bdf57435-a2aa-4814-b4fe-f8716e54a53d","step_order":1,"action":"run_script","attempt":2,"max_retries":3,"next_retry_at":"2026-05-07T15:16:59+07:00","error":"command execution failed: exec: \"sh\": executable file not found in %PATH%"}
+{"time":"2026-05-07T15:16:59.2059762+07:00","level":"WARN","msg":"Step execution failed, retrying","execution_id":"bdf57435-a2aa-4814-b4fe-f8716e54a53d","step_order":1,"action":"run_script","attempt":3,"max_retries":3,"next_retry_at":"2026-05-07T15:17:04+07:00","error":"command execution failed: exec: \"sh\": executable file not found in %PATH%"}
+{"time":"2026-05-07T15:17:04.271241+07:00","level":"INFO","msg":"Execution finished","execution_id":"bdf57435-a2aa-4814-b4fe-f8716e54a53d","status":"failed"}
+{"time":"2026-05-07T15:17:04.271241+07:00","level":"INFO","msg":"Worker finished execution","worker_id":0,"execution_id":"bdf57435-a2aa-4814-b4fe-f8716e54a53d"}
+{"time":"2026-05-07T18:17:51.5886958+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":2,"error":"read tcp [::1]:50130->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:17:51.6797745+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":9,"error":"read tcp [::1]:50126->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:17:51.6797745+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":4,"error":"read tcp [::1]:50127->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:17:52.1019476+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":0,"error":"read tcp [::1]:58837->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.082882+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":1,"error":"read tcp [::1]:50124->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.2107863+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":2,"error":"read tcp [::1]:61538->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.2112214+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":9,"error":"read tcp [::1]:61535->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.2112214+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":4,"error":"read tcp [::1]:61537->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.2112214+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":0,"error":"read tcp [::1]:61536->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.2300104+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":3,"error":"read tcp [::1]:50134->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.2366831+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":8,"error":"read tcp [::1]:50133->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.2385698+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":5,"error":"read tcp [::1]:50131->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.228707+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":6,"error":"read tcp [::1]:50129->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T18:33:09.2294648+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":7,"error":"read tcp [::1]:50128->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:23.5918826+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":2,"error":"read tcp [::1]:64418->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:23.5924642+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":8,"error":"read tcp [::1]:64415->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:23.5924642+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":1,"error":"read tcp [::1]:64413->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:23.5924642+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":6,"error":"read tcp [::1]:64416->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:23.5924642+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":3,"error":"read tcp [::1]:64411->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:23.5924642+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":0,"error":"read tcp [::1]:64414->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:23.8517125+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":9,"error":"read tcp [::1]:64419->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:24.2017009+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":4,"error":"read tcp [::1]:64412->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:24.2017009+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":7,"error":"read tcp [::1]:64417->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:25.5368319+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":5,"error":"read tcp [::1]:64410->[::1]:6379: i/o timeout"}
+{"time":"2026-05-07T21:06:29.5574172+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":1,"error":"i/o timeout"}
+{"time":"2026-05-07T21:06:29.5574172+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":0,"error":"i/o timeout"}
+{"time":"2026-05-07T21:06:29.5574172+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":3,"error":"i/o timeout"}
+{"time":"2026-05-07T21:06:29.5574172+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":5,"error":"i/o timeout"}
+{"time":"2026-05-07T21:06:29.5574172+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":4,"error":"i/o timeout"}
+{"time":"2026-05-07T21:06:29.5574172+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":7,"error":"i/o timeout"}
+{"time":"2026-05-07T21:06:29.5604506+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":2,"error":"i/o timeout"}
+{"time":"2026-05-07T21:06:29.5615345+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":6,"error":"i/o timeout"}
+{"time":"2026-05-07T21:06:29.5650509+07:00","level":"DEBUG","msg":"Dequeue error or timeout","worker_id":8,"error":"i/o timeout"}
+{"time":"2026-05-08T19:40:14.1129431+07:00","level":"INFO","msg":"Shutting down gracefully..."}
+{"time":"2026-05-08T19:40:14.1585936+07:00","level":"INFO","msg":"Stopping worker pool..."}
+{"time":"2026-05-08T19:40:14.1134866+07:00","level":"INFO","msg":"Shutting down server..."}
+{"time":"2026-05-08T19:40:14.1795101+07:00","level":"INFO","msg":"Stopping scheduler service"}
+{"time":"2026-05-08T19:40:14.193948+07:00","level":"INFO","msg":"Stopping worker pool..."}
+{"time":"2026-05-08T19:40:14.194773+07:00","level":"DEBUG","msg":"Worker stopping","worker_id":6}
