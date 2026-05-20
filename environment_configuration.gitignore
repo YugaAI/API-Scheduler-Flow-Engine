@@ -1,0 +1,11 @@
+# Hidden directories (starting with dot)
+/.*
+
+# OpenSpec directory
+/openspec
+
+# Environment files
+.env
+
+# OpenSpec config
+.openspec.yaml
