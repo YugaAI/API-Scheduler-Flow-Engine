@@ -41,17 +41,46 @@ services:
     env_file:
       - .env
     environment:
+<<<<<<< HEAD
       # GIN release mode — hilangkan debug warning dan route logging overhead
       - GIN_MODE=release
+=======
+      - SERVER_PORT=8080
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgrespassword
+      - DB_NAME=flow_engine
+      - DB_SSL_MODE=disable
+      - REDIS_URL=redis:6379
+      - JWT_SECRET=aAFSmO5lDRkWiXj/MjE+KiLdoOjBdxFbHvUwI1gZ7OIH2zzMjTGT3CHkxTzSO8Hr0RaS7nqX/8TjHdYYFtwDHQ==
+      - WORKER_POOL_SIZE=10
+      - TIMEZONE=Asia/Jakarta
+      - LOG_LEVEL=info
+    
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/xylo/apps:/workspace
+
+>>>>>>> 0927876 (fixing)
     depends_on:
       db:
         condition: service_healthy
       redis:
+<<<<<<< HEAD
         condition: service_healthy
+=======
+        condition: service_started
+    
+>>>>>>> 0927876 (fixing)
     logging:
       driver: journald
       options:
         tag: "api-scheduler-flow-engine-app"
+<<<<<<< HEAD
+=======
+
+>>>>>>> 0927876 (fixing)
 
 volumes:
   postgres_data:
