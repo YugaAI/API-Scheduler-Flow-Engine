@@ -54,16 +54,17 @@ func NewSchedulerService(
 func (s *SchedulerService) Start(ctx context.Context) error {
 	logger.Info("Starting scheduler service")
 
-	// Reload all enabled schedules from DB
 	schedules, err := s.scheduleRepo.FindAllEnabled(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load enabled schedules: %w", err)
 	}
 
 	for _, sched := range schedules {
-		err := s.AddJob(sched.ID, sched.CronExpression, sched.FlowID)
-		if err != nil {
-			logger.Error("Failed to register schedule on startup", "schedule_id", sched.ID, "error", err)
+		if err := s.AddJob(sched.ID, sched.CronExpression, sched.FlowID); err != nil {
+			logger.Error("Failed to register schedule on startup",
+				"schedule_id", sched.ID,
+				"error", err,
+			)
 		}
 	}
 
@@ -81,7 +82,7 @@ func (s *SchedulerService) AddJob(scheduleID uuid.UUID, cronExpr string, flowID 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Remove existing job if present
+	// Remove existing job jika sudah ada — idempotent
 	if entryID, exists := s.jobs[scheduleID]; exists {
 		s.cronRunner.Remove(entryID)
 	}
@@ -89,8 +90,7 @@ func (s *SchedulerService) AddJob(scheduleID uuid.UUID, cronExpr string, flowID 
 	job := func() {
 		logger.Info("Cron job triggered", "schedule_id", scheduleID, "flow_id", flowID)
 		ctx := context.Background()
-		
-		// Create execution
+
 		execution := &entity.Execution{
 			FlowID:      &flowID,
 			Status:      entity.ExecutionStatusPending,
@@ -98,22 +98,50 @@ func (s *SchedulerService) AddJob(scheduleID uuid.UUID, cronExpr string, flowID 
 		}
 
 		if err := s.executionRepo.Create(ctx, execution); err != nil {
-			logger.Error("Failed to create execution for cron trigger", "error", err)
+			logger.Error("Failed to create execution for cron trigger",
+				"schedule_id", scheduleID,
+				"flow_id", flowID,
+				"error", err,
+			)
 			return
 		}
 
-		// Dispatch execution
 		if err := s.dispatcher.Dispatch(ctx, execution.ID); err != nil {
-			logger.Error("Failed to dispatch scheduled execution", "execution_id", execution.ID, "error", err)
+			logger.Error("Failed to dispatch scheduled execution",
+				"execution_id", execution.ID,
+				"schedule_id", scheduleID,
+				"error", err,
+			)
 			return
 		}
 
-		// Update schedule last_run_at
+		// Update last_run_at — gunakan context dengan timeout sendiri
+		// Error tidak boleh di-ignore — harus di-log agar silent failure terdeteksi
+		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		sched, err := s.scheduleRepo.FindByID(updateCtx, scheduleID)
+		if err != nil {
+			logger.Error("Failed to find schedule for last_run_at update",
+				"schedule_id", scheduleID,
+				"error", err,
+			)
+			return
+		}
+		if sched == nil {
+			logger.Warn("Schedule not found for last_run_at update — possibly deleted",
+				"schedule_id", scheduleID,
+			)
+			return
+		}
+
 		now := time.Now()
-		sched, err := s.scheduleRepo.FindByID(ctx, scheduleID)
-		if err == nil && sched != nil {
-			sched.LastRunAt = &now
-			s.scheduleRepo.Update(ctx, sched)
+		sched.LastRunAt = &now
+		if err := s.scheduleRepo.Update(updateCtx, sched); err != nil {
+			logger.Error("Failed to update schedule last_run_at",
+				"schedule_id", scheduleID,
+				"error", err,
+			)
 		}
 	}
 

@@ -1,30 +1,26 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
-
+FROM golang:1.24-alpine AS builder
 WORKDIR /app
 
-# Install git for downloading dependencies
 RUN apk update && apk add --no-cache git
-
-# Download dependencies
 COPY go.mod go.sum ./
 RUN go mod download
-
-# Copy source code
 COPY . .
-
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o flow-engine cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-w -s" \
+    -o flow-engine cmd/server/main.go
 
 # Run stage
-FROM gcr.io/distroless/static:nonroot
-
+FROM alpine:3.21
 WORKDIR /
 
-# Copy binary from builder
+# Security: non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Install shell dan timezone data
+RUN apk add --no-cache bash tzdata ca-certificates
+
 COPY --from=builder /app/flow-engine /flow-engine
 
-# Use non-root user
-USER 65532:65532
-
+USER appuser
 ENTRYPOINT ["/flow-engine"]

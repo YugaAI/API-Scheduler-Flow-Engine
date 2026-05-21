@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openspec/api-scheduler-flow-engine/internal/domain/entity"
 	"github.com/openspec/api-scheduler-flow-engine/internal/domain/repository"
+	infraAction "github.com/openspec/api-scheduler-flow-engine/internal/infrastructure/action"
 	"github.com/openspec/api-scheduler-flow-engine/internal/infrastructure/queue"
 	"github.com/openspec/api-scheduler-flow-engine/pkg/config"
 	"github.com/openspec/api-scheduler-flow-engine/pkg/logger"
@@ -41,6 +42,7 @@ func (s *ExecutorService) Execute(ctx context.Context, executionID uuid.UUID) {
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(s.cfg.ExecutionTimeoutSeconds)*time.Second)
 	defer cancel()
 
+	// FindByID tanpa steps — executor hanya butuh metadata execution
 	execution, err := s.executionRepo.FindByID(timeoutCtx, executionID)
 	if err != nil || execution == nil {
 		logger.Error("Failed to find execution", "execution_id", executionID, "error", err)
@@ -49,23 +51,29 @@ func (s *ExecutorService) Execute(ctx context.Context, executionID uuid.UUID) {
 
 	if execution.FlowID == nil {
 		logger.Error("Execution has no associated flow", "execution_id", executionID)
-		s.markExecutionFinished(timeoutCtx, execution, entity.ExecutionStatusFailed)
+		s.markExecutionFinished(executionID, entity.ExecutionStatusFailed)
 		return
 	}
 
 	flow, err := s.flowRepo.FindByID(timeoutCtx, *execution.FlowID)
 	if err != nil || flow == nil {
 		logger.Error("Failed to find flow for execution", "execution_id", executionID, "flow_id", execution.FlowID)
-		s.markExecutionFinished(timeoutCtx, execution, entity.ExecutionStatusFailed)
+		s.markExecutionFinished(executionID, entity.ExecutionStatusFailed)
 		return
 	}
 
 	now := time.Now()
 	execution.Status = entity.ExecutionStatusRunning
 	execution.StartedAt = &now
-	s.executionRepo.Update(timeoutCtx, execution)
+	if err := s.executionRepo.Update(timeoutCtx, execution); err != nil {
+		logger.Error("Failed to update execution status to running", "execution_id", executionID, "error", err)
+	}
 
-	logger.Info("Starting execution", "execution_id", executionID, "flow_id", flow.ID, "trigger_type", execution.TriggerType)
+	logger.Info("Starting execution",
+		"execution_id", executionID,
+		"flow_id", flow.ID,
+		"trigger_type", execution.TriggerType,
+	)
 
 	overallStatus := entity.ExecutionStatusCompleted
 	stopExecution := false
@@ -76,8 +84,7 @@ func (s *ExecutorService) Execute(ctx context.Context, executionID uuid.UUID) {
 			continue
 		}
 
-		err := s.executeStep(timeoutCtx, executionID, step)
-		if err != nil {
+		if err := s.executeStep(timeoutCtx, executionID, step); err != nil {
 			overallStatus = entity.ExecutionStatusFailed
 			if s.cfg.FailurePolicy == "stop" {
 				stopExecution = true
@@ -90,7 +97,9 @@ func (s *ExecutorService) Execute(ctx context.Context, executionID uuid.UUID) {
 		logger.Error("Execution timed out", "execution_id", executionID)
 	}
 
-	s.markExecutionFinished(context.Background(), execution, overallStatus)
+	// markExecutionFinished memakai context baru dengan timeout sendiri —
+	// timeoutCtx bisa sudah expired saat ini
+	s.markExecutionFinished(executionID, overallStatus)
 }
 
 func (s *ExecutorService) executeStep(ctx context.Context, executionID uuid.UUID, step entity.Step) error {
@@ -103,7 +112,16 @@ func (s *ExecutorService) executeStep(ctx context.Context, executionID uuid.UUID
 		StartedAt:   &now,
 	}
 
-	s.executionRepo.UpdateStep(ctx, execStep)
+	// CreateStep — INSERT row baru, sehingga execStep.ID terisi oleh GORM.
+	// Semua UpdateStep berikutnya aman karena sudah ada ID.
+	if err := s.executionRepo.CreateStep(ctx, execStep); err != nil {
+		logger.Error("Failed to create execution step",
+			"execution_id", executionID,
+			"step_order", step.Order,
+			"error", err,
+		)
+		return err
+	}
 
 	actionHandler, err := s.actionRegistry.Get(step.Action)
 	if err != nil {
@@ -124,7 +142,7 @@ func (s *ExecutorService) executeStep(ctx context.Context, executionID uuid.UUID
 
 		output, execErr = actionHandler.Execute(ctx, step.Config)
 		if execErr == nil {
-			// Step berhasil — jika sebelumnya ada retry state, tandai completed
+			// Step berhasil — jika sebelumnya ada retry, tandai completed di Redis
 			if attempt > 0 {
 				if trackErr := s.retryTracker.TrackRetryCompleted(ctx, executionID, step.Order); trackErr != nil {
 					logger.Warn("Failed to track retry completed",
@@ -137,16 +155,44 @@ func (s *ExecutorService) executeStep(ctx context.Context, executionID uuid.UUID
 			break
 		}
 
-		if attempt >= retryCount {
-			// Semua retry habis — tandai failed di Redis
+		// Cek retryability SEBELUM melakukan apapun —
+		// non-retryable error tidak boleh masuk ke delay/track loop
+		if !infraAction.IsRetryable(execErr) {
+			logger.Error("Step failed with non-retryable error, aborting retries",
+				"execution_id", executionID,
+				"step_order", step.Order,
+				"action", step.Action,
+				"attempt", attempt+1,
+				"error", execErr,
+			)
+
+			// Track ke Redis sebagai failed langsung jika retryCount > 0
 			if retryCount > 0 {
-				if trackErr := s.retryTracker.TrackRetryFailed(ctx, executionID, step.Order, execErr.Error()); trackErr != nil {
-					logger.Warn("Failed to track retry failed",
+				trackCtx, trackCancel := context.WithTimeout(context.Background(), 3*time.Second)
+				if trackErr := s.retryTracker.TrackRetryFailed(trackCtx, executionID, step.Order, execErr.Error()); trackErr != nil {
+					logger.Warn("Failed to track non-retryable failure",
 						"execution_id", executionID,
 						"step_order", step.Order,
 						"error", trackErr,
 					)
 				}
+				trackCancel()
+			}
+			break
+		}
+
+		if attempt >= retryCount {
+			// Semua retry habis
+			if retryCount > 0 {
+				trackCtx, trackCancel := context.WithTimeout(context.Background(), 3*time.Second)
+				if trackErr := s.retryTracker.TrackRetryFailed(trackCtx, executionID, step.Order, execErr.Error()); trackErr != nil {
+					logger.Warn("Failed to track retry exhausted",
+						"execution_id", executionID,
+						"step_order", step.Order,
+						"error", trackErr,
+					)
+				}
+				trackCancel()
 			}
 			break
 		}
@@ -163,7 +209,6 @@ func (s *ExecutorService) executeStep(ctx context.Context, executionID uuid.UUID
 			"error", execErr,
 		)
 
-		// Track retry attempt ke Redis — visible di RedisInsight
 		if trackErr := s.retryTracker.TrackRetryAttempt(
 			ctx,
 			executionID,
@@ -186,13 +231,23 @@ func (s *ExecutorService) executeStep(ctx context.Context, executionID uuid.UUID
 		case <-ctx.Done():
 			timer.Stop()
 			execErr = ctx.Err()
-			// Track sebagai failed karena context cancelled
+
+			// ctx sudah done — gunakan context baru untuk Redis tracking
 			if retryCount > 0 {
-				_ = s.retryTracker.TrackRetryFailed(ctx, executionID, step.Order, execErr.Error())
+				trackCtx, trackCancel := context.WithTimeout(context.Background(), 3*time.Second)
+				if trackErr := s.retryTracker.TrackRetryFailed(trackCtx, executionID, step.Order, execErr.Error()); trackErr != nil {
+					logger.Warn("Failed to track retry cancelled",
+						"execution_id", executionID,
+						"step_order", step.Order,
+						"error", trackErr,
+					)
+				}
+				trackCancel()
 			}
 			goto doneRetry
+
 		case <-timer.C:
-			// lanjut ke attempt berikutnya
+			// Lanjut ke attempt berikutnya
 		}
 	}
 
@@ -217,19 +272,49 @@ func (s *ExecutorService) createSkippedStep(ctx context.Context, executionID uui
 		Action:      step.Action,
 		Status:      entity.StepStatusSkipped,
 	}
-	s.executionRepo.UpdateStep(ctx, execStep)
+	if err := s.executionRepo.CreateStep(ctx, execStep); err != nil {
+		logger.Error("Failed to create skipped step record",
+			"execution_id", executionID,
+			"step_order", step.Order,
+			"error", err,
+		)
+	}
 }
 
 func (s *ExecutorService) finishStep(ctx context.Context, step *entity.ExecutionStep) {
 	now := time.Now()
 	step.FinishedAt = &now
-	s.executionRepo.UpdateStep(ctx, step)
+	if err := s.executionRepo.UpdateStep(ctx, step); err != nil {
+		logger.Error("Failed to update step status",
+			"step_id", step.ID,
+			"execution_id", step.ExecutionID,
+			"step_order", step.StepOrder,
+			"status", step.Status,
+			"error", err,
+		)
+	}
 }
 
-func (s *ExecutorService) markExecutionFinished(ctx context.Context, execution *entity.Execution, status string) {
+// markExecutionFinished selalu menggunakan context baru dengan timeout sendiri.
+// Dipanggil setelah timeoutCtx bisa sudah expired — tidak boleh pakai ctx lama.
+func (s *ExecutorService) markExecutionFinished(executionID uuid.UUID, status string) {
+	finishCtx, finishCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer finishCancel()
+
 	now := time.Now()
-	execution.Status = status
-	execution.FinishedAt = &now
-	s.executionRepo.Update(ctx, execution)
-	logger.Info("Execution finished", "execution_id", execution.ID, "status", status)
+	execution := &entity.Execution{
+		ID:         executionID,
+		Status:     status,
+		FinishedAt: &now,
+	}
+	if err := s.executionRepo.Update(finishCtx, execution); err != nil {
+		logger.Error("Failed to mark execution finished",
+			"execution_id", executionID,
+			"status", status,
+			"error", err,
+		)
+		return
+	}
+
+	logger.Info("Execution finished", "execution_id", executionID, "status", status)
 }

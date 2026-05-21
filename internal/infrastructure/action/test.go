@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
+// TestAction menjalankan test command via shell.
 type TestAction struct{}
 
 type TestConfig struct {
@@ -22,14 +25,28 @@ func (a *TestAction) Name() string {
 func (a *TestAction) Execute(ctx context.Context, config json.RawMessage) (string, error) {
 	var cfg TestConfig
 	if err := json.Unmarshal(config, &cfg); err != nil {
-		return "", fmt.Errorf("invalid config for test: %w", err)
+		return "", &ScriptError{
+			Err:       fmt.Errorf("invalid config for test: %w", err),
+			Retryable: false,
+			Reason:    "invalid_config",
+		}
 	}
 
 	if cfg.Command == "" {
-		return "", fmt.Errorf("command is required for test")
+		return "", &ScriptError{
+			Err:       errors.New("command is required for test"),
+			Retryable: false,
+			Reason:    "missing_command",
+		}
 	}
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", cfg.Command)
+	// resolveShell dari shared.go — tidak hardcode "sh"
+	shell, err := resolveShell()
+	if err != nil {
+		return "", err
+	}
+
+	cmd := exec.CommandContext(ctx, shell, "-c", cfg.Command)
 	if cfg.WorkDir != "" {
 		cmd.Dir = cfg.WorkDir
 	}
@@ -38,16 +55,39 @@ func (a *TestAction) Execute(ctx context.Context, config json.RawMessage) (strin
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
-	
-	output := stdout.String()
+	runErr := cmd.Run()
+
+	var output strings.Builder
+	output.WriteString(stdout.String())
 	if stderr.Len() > 0 {
-		output += "\n-- STDERR --\n" + stderr.String()
+		output.WriteString("\n-- STDERR --\n")
+		output.WriteString(stderr.String())
 	}
 
-	if err != nil {
-		return output, fmt.Errorf("test failed: %w", err)
+	if runErr != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return output.String(), &ScriptError{
+				Err:       fmt.Errorf("test cancelled: %w", ctxErr),
+				Retryable: false,
+				Reason:    "context_cancelled",
+			}
+		}
+
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) {
+			return output.String(), &ScriptError{
+				Err:       fmt.Errorf("test exited with code %d: %w", exitErr.ExitCode(), runErr),
+				Retryable: true,
+				Reason:    fmt.Sprintf("exit_code_%d", exitErr.ExitCode()),
+			}
+		}
+
+		return output.String(), &ScriptError{
+			Err:       fmt.Errorf("test failed: %w", runErr),
+			Retryable: false,
+			Reason:    "execution_error",
+		}
 	}
 
-	return output, nil
+	return output.String(), nil
 }

@@ -18,17 +18,26 @@ type WorkerPool struct {
 	executor   *ExecutorService
 	wg         sync.WaitGroup
 	quit       chan struct{}
-	once       sync.Once // ← Fix #1: guard close(quit)
+	once       sync.Once
 	useRedis   bool
+
+	// ctx dan cancel digunakan untuk propagate cancellation ke execution yang sedang berjalan.
+	// Saat Stop() dipanggil, cancel() dipanggil — semua execution aktif mendapat sinyal cancel.
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func NewWorkerPool(maxWorkers int, executor *ExecutorService, redisQueue queue.Queue) *WorkerPool {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &WorkerPool{
 		maxWorkers: maxWorkers,
 		queue:      redisQueue,
 		executor:   executor,
 		quit:       make(chan struct{}),
+		once:       sync.Once{},
 		useRedis:   true,
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 
@@ -40,11 +49,13 @@ func (p *WorkerPool) Start() {
 	}
 }
 
-// Stop idempotent — aman dipanggil berkali-kali
+// Stop idempotent — aman dipanggil berkali-kali.
+// cancel() menyebar ke semua execution yang sedang berjalan via context.
 func (p *WorkerPool) Stop() {
 	p.once.Do(func() {
 		logger.Info("Stopping worker pool...")
-		close(p.quit)
+		p.cancel()      // sinyal ke semua execution aktif untuk berhenti
+		close(p.quit)   // sinyal ke semua goroutine worker untuk exit loop
 	})
 	p.wg.Wait()
 	logger.Info("Worker pool stopped")
@@ -77,7 +88,7 @@ func (p *WorkerPool) worker(id int) {
 	logger.Debug("Worker started", "worker_id", id)
 
 	for {
-		// Fix #2: cek quit signal SEBELUM blocking dequeue
+		// Cek quit signal SEBELUM blocking dequeue
 		select {
 		case <-p.quit:
 			logger.Debug("Worker stopping", "worker_id", id)
@@ -86,10 +97,8 @@ func (p *WorkerPool) worker(id int) {
 		}
 
 		if p.useRedis {
-			// Fix #3: DequeueWithTimeout sudah blocking — tidak perlu default busy-wait
 			executionID, err := p.queue.DequeueWithTimeout(context.Background(), 2*time.Second)
 			if err != nil {
-				// Cek quit lagi setelah timeout, hindari log spam saat shutdown
 				select {
 				case <-p.quit:
 					logger.Debug("Worker stopping", "worker_id", id)
@@ -104,15 +113,18 @@ func (p *WorkerPool) worker(id int) {
 			}
 
 			logger.Info("Worker processing execution", "worker_id", id, "execution_id", executionID)
-			p.executor.Execute(context.Background(), executionID)
+
+			// Propagate p.ctx ke executor — saat Stop() dipanggil,
+			// p.cancel() akan menyebar ke semua execution yang sedang berjalan
+			p.executor.Execute(p.ctx, executionID)
+
 			logger.Info("Worker finished execution", "worker_id", id, "execution_id", executionID)
 
 		} else {
-			// In-memory: blocking select dengan quit signal
 			select {
 			case executionID := <-p.jobQueue:
 				logger.Info("Worker processing execution", "worker_id", id, "execution_id", executionID)
-				p.executor.Execute(context.Background(), executionID)
+				p.executor.Execute(p.ctx, executionID)
 				logger.Info("Worker finished execution", "worker_id", id, "execution_id", executionID)
 			case <-p.quit:
 				logger.Debug("Worker stopping", "worker_id", id)
