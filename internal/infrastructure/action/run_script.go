@@ -42,6 +42,24 @@ func (a *RunScriptAction) Execute(ctx context.Context, config json.RawMessage) (
 		}
 	}
 
+	allowed := []string{
+		"git",
+		"docker",
+		"docker compose up",
+		"docker compose pull",
+		"npm",
+		"go",
+		"make",
+	}
+
+	if err := validateCommand(cfg.Command, allowed); err != nil {
+		return "", &ScriptError{
+			Err:       err,
+			Retryable: false,
+			Reason:    "command_not_allowed",
+		}
+	}
+
 	// Validasi WorkDir sebelum exec — fail fast dengan pesan jelas
 	if cfg.WorkDir != "" {
 		if _, err := os.Stat(cfg.WorkDir); err != nil {
