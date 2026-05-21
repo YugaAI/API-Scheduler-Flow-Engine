@@ -52,8 +52,18 @@ func (r *scheduleRepositoryImpl) FindAllEnabled(ctx context.Context) ([]entity.S
 	return schedules, err
 }
 
+// Update hanya meng-update field yang relevan — menghindari full Save().
+// Field: cron_expression, enabled, last_run_at.
+// Aman dari race condition karena tidak overwrite field lain.
 func (r *scheduleRepositoryImpl) Update(ctx context.Context, schedule *entity.Schedule) error {
-	return r.db.WithContext(ctx).Save(schedule).Error
+	return r.db.WithContext(ctx).
+		Model(schedule).
+		Select("cron_expression", "enabled", "last_run_at").
+		Updates(map[string]interface{}{
+			"cron_expression": schedule.CronExpression,
+			"enabled":         schedule.Enabled,
+			"last_run_at":     schedule.LastRunAt,
+		}).Error
 }
 
 func (r *scheduleRepositoryImpl) Delete(ctx context.Context, id uuid.UUID) error {

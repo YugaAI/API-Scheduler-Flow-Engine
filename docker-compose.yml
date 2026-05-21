@@ -3,15 +3,16 @@ services:
     restart: unless-stopped
     image: postgres:14-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: flow_engine
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
-      - "5432:5432"
+      # Bind ke localhost only — jangan expose ke public interface
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -20,23 +21,27 @@ services:
     restart: unless-stopped
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      # Bind ke localhost only — jangan expose ke public interface
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
 
   app:
     restart: unless-stopped
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "8085:8085"
+      - "0.0.0.0:8080:8080"
     env_file:
       - .env
     environment:
+      # GIN release mode — hilangkan debug warning dan route logging overhead
       - GIN_MODE=release
     depends_on:
       db:

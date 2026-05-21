@@ -56,17 +56,18 @@ func (u *executionUseCaseImpl) TriggerExecution(ctx context.Context, flowID uuid
 		return nil, err
 	}
 
-	// Dispatch to worker pool asynchronously
-	err = u.dispatcher.Dispatch(context.Background(), execution.ID)
-	if err != nil {
+	// Dispatch menggunakan ctx dari request — bukan context.Background().
+	// Jika request di-cancel sebelum dispatch selesai, operasi ikut di-cancel.
+	if err := u.dispatcher.Dispatch(ctx, execution.ID); err != nil {
 		return execution, fmt.Errorf("execution created but dispatch failed: %w", err)
 	}
 
 	return execution, nil
 }
 
+// GetExecution dipakai oleh presentation layer — load WITH steps untuk response lengkap.
 func (u *executionUseCaseImpl) GetExecution(ctx context.Context, id uuid.UUID) (*entity.Execution, error) {
-	execution, err := u.executionRepo.FindByID(ctx, id)
+	execution, err := u.executionRepo.FindByIDWithSteps(ctx, id)
 	if err != nil {
 		return nil, err
 	}

@@ -47,6 +47,7 @@ func (h *ExecutionHandler) GetExecution(c *gin.Context) {
 		return
 	}
 
+	// GetExecution dari usecase sudah pakai FindByIDWithSteps — steps ikut di-load
 	execution, err := h.usecase.GetExecution(c.Request.Context(), id)
 	if err != nil {
 		if err.Error() == "execution not found" {
@@ -73,15 +74,30 @@ func (h *ExecutionHandler) ListExecutions(c *gin.Context) {
 		pageSize = 20
 	}
 
-	var filter repository.ExecutionFilter
-	
-	if flowIDStr := c.Query("flow_id"); flowIDStr != "" {
-		if id, err := uuid.Parse(flowIDStr); err == nil {
-			filter.FlowID = &id
-		}
+	// Validasi status — tolak value yang tidak valid sebelum masuk ke repo
+	validStatuses := map[string]bool{
+		"pending": true, "running": true,
+		"completed": true, "failed": true,
+		"cancelled": true, "": true,
 	}
-	
-	filter.Status = c.Query("status")
+	statusFilter := c.Query("status")
+	if !validStatuses[statusFilter] {
+		c.JSON(http.StatusBadRequest, response.ErrorResponse{
+			Error: "invalid status filter, allowed: pending, running, completed, failed, cancelled",
+		})
+		return
+	}
+
+	var filter repository.ExecutionFilter
+	if flowIDStr := c.Query("flow_id"); flowIDStr != "" {
+		parsed, err := uuid.Parse(flowIDStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, response.ErrorResponse{Error: "invalid flow_id format"})
+			return
+		}
+		filter.FlowID = &parsed
+	}
+	filter.Status = statusFilter
 
 	executions, total, err := h.usecase.ListExecutions(c.Request.Context(), filter, page, pageSize, sortBy, sortOrder)
 	if err != nil {

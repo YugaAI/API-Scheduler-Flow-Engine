@@ -35,10 +35,15 @@ type Config struct {
 	ExecutionTimeoutSeconds int
 	DefaultRetryCount       int
 	DefaultRetryDelay       int
-	FailurePolicy           string
+
+	// FailurePolicy menentukan behaviour saat step gagal setelah semua retry habis.
+	// "stop"     — stop eksekusi, skip semua step berikutnya (default)
+	// "continue" — lanjut ke step berikutnya meski ada step yang gagal
+	FailurePolicy string
 }
 
-// Load reads configuration from environment variables with sensible defaults.
+// Load membaca semua konfigurasi dari environment variables.
+// Semua env var yang tidak ada defaultnya dan wajib diisi akan menyebabkan error.
 func Load() (*Config, error) {
 	cfg := &Config{
 		ServerPort:    getEnv("SERVER_PORT", "8080"),
@@ -61,6 +66,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid WORKER_POOL_SIZE: %w", err)
 	}
 
+	// EXECUTION_TIMEOUT_SECONDS wajib eksplisit di docker-compose/env —
+	// default 300 hanya sebagai fallback, bukan nilai production yang direkomendasikan
 	cfg.ExecutionTimeoutSeconds, err = getEnvInt("EXECUTION_TIMEOUT_SECONDS", 300)
 	if err != nil {
 		return nil, fmt.Errorf("invalid EXECUTION_TIMEOUT_SECONDS: %w", err)
@@ -71,13 +78,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid DEFAULT_RETRY_COUNT: %w", err)
 	}
 
-	cfg.DefaultRetryDelay, err = getEnvInt("DEFAULT_RETRY_DELAY", 5)
+	cfg.DefaultRetryDelay, err = getEnvInt("DEFAULT_RETRY_DELAY_SECONDS", 5)
 	if err != nil {
-		return nil, fmt.Errorf("invalid DEFAULT_RETRY_DELAY: %w", err)
+		return nil, fmt.Errorf("invalid DEFAULT_RETRY_DELAY_SECONDS: %w", err)
 	}
 
 	if cfg.JWTSecret == "" {
 		return nil, fmt.Errorf("JWT_SECRET environment variable is required")
+	}
+
+	// Validasi FailurePolicy — tolak nilai tidak valid saat startup
+	if cfg.FailurePolicy != "stop" && cfg.FailurePolicy != "continue" {
+		return nil, fmt.Errorf("invalid FAILURE_POLICY=%q: allowed values are 'stop' or 'continue'", cfg.FailurePolicy)
 	}
 
 	return cfg, nil
