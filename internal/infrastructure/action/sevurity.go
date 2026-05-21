@@ -26,25 +26,6 @@ func validateCommand(command string, allowed []string) error {
 		return fmt.Errorf("multiline command is not allowed")
 	}
 
-	// Block dangerous shell operators
-	forbidden := []string{
-		";",
-		"&&",
-		"||",
-		"|",
-		">",
-		">>",
-		"<",
-		"`",
-		"$(",
-	}
-
-	for _, pattern := range forbidden {
-		if strings.Contains(command, pattern) {
-			return fmt.Errorf("forbidden shell operator detected: %s", pattern)
-		}
-	}
-
 	fields := strings.Fields(command)
 	if len(fields) == 0 {
 		return fmt.Errorf("invalid command")
