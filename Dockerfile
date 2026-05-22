@@ -34,6 +34,9 @@ COPY --from=builder /app/flow-engine /flow-engine
 
 RUN addgroup -S app && adduser -S app -G app
 
+RUN mkdir -p /app/logs && \
+    chown -R app:app /app
+
 USER app
 
 ENTRYPOINT ["/flow-engine"]
