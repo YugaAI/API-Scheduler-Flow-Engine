@@ -3,12 +3,11 @@ services:
     restart: unless-stopped
     image: postgres:14-alpine
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: flow_engine
     ports:
-      # Bind ke localhost only — jangan expose ke public interface
-      - "127.0.0.1:5432:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,8 +20,7 @@ services:
     restart: unless-stopped
     image: redis:7-alpine
     ports:
-      # Bind ke localhost only — jangan expose ke public interface
-      - "127.0.0.1:6379:6379"
+      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -37,14 +35,11 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "0.0.0.0:8080:8080"
+      - "8080:8080"
     env_file:
       - .env
     environment:
-<<<<<<< HEAD
-      # GIN release mode — hilangkan debug warning dan route logging overhead
       - GIN_MODE=release
-=======
       - SERVER_PORT=8080
       - DB_HOST=db
       - DB_PORT=5432
@@ -62,25 +57,16 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/xylo/apps:/workspace
 
->>>>>>> 0927876 (fixing)
     depends_on:
       db:
         condition: service_healthy
       redis:
-<<<<<<< HEAD
         condition: service_healthy
-=======
-        condition: service_started
 
->>>>>>> 0927876 (fixing)
     logging:
       driver: journald
       options:
         tag: "api-scheduler-flow-engine-app"
-<<<<<<< HEAD
-=======
-
->>>>>>> 0927876 (fixing)
 
 volumes:
   postgres_data:

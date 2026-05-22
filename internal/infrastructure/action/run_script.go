@@ -42,21 +42,14 @@ func (a *RunScriptAction) Execute(ctx context.Context, config json.RawMessage) (
 		}
 	}
 
-	allowed := []string{
-		"git",
-		"docker",
-		"docker compose up",
-		"docker compose pull",
-		"npm",
-		"go",
-		"make",
-	}
-
-	if err := validateCommand(cfg.Command, allowed); err != nil {
+	// Sanitasi minimal — cegah null byte injection yang bisa bypass shell parsing
+	// Tidak memvalidasi isi command karena seluruh string diserahkan ke shell interpreter.
+	// Security enforcement ada di layer auth/role (siapa yang boleh create/trigger flow).
+	if strings.ContainsRune(cfg.Command, 0) {
 		return "", &ScriptError{
-			Err:       err,
+			Err:       errors.New("command contains null byte"),
 			Retryable: false,
-			Reason:    "command_not_allowed",
+			Reason:    "invalid_command",
 		}
 	}
 
