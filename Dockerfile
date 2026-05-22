@@ -39,4 +39,5 @@ RUN mkdir -p /app/logs && \
 
 USER app
 
-ENTRYPOINT ["/flow-engine"]
+CMD ["/app/flow-engine"]
+# ENTRYPOINT ["/flow-engine"]
